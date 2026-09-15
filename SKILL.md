@@ -22,7 +22,7 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 
 题材可以是奇幻、科幻、推理、历史、现实、武侠、言情、冒险或混合题材。不要把某一题材的分类强加给另一题材；只有原文确实存在相应概念时才建立对应卡片。
 
-每条重要事实尽量保留 `source_file`、`source_chunk`、`source_chapter`、`related_entity` 和 `evidence_status`。没有来源证据的内容不能写成确定事实。
+每条重要事实尽量保留 `source_file`、`source_chunk`、`source_chapter`、`related_entity` 和 `evidence_status`。正式卡片还必须有稳定的 `entity_id`，并在 `证据` 区块逐条记录定位、证据类型、置信度和事实/转述/推断状态。没有来源证据的内容不能写成确定事实，详细格式见 [`references/card-schemas.md`](references/card-schemas.md)。
 
 ## 触发后的第一步
 
@@ -42,6 +42,8 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 <书名>-蒸馏/
 ├── 00-总览.md
 ├── PIPELINE_STATE.md
+├── manifest.json             # 原始文件路径、SHA-256、大小和修改时间
+├── audit-config.json         # 可选：题材或项目自定义审计配置
 ├── 角色索引.md
 ├── 事件索引.md
 ├── 地点索引.md
@@ -68,8 +70,8 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 
 ## 阶段 0：盘点与切分
 
-1. 检查文件大小、编码、行尾、章节或场景标题、最小和最大章节号；记录原文 SHA-256。
-2. 章节识别按证据逐步放宽：优先匹配明确的中文章节标题，也可识别“第 X 回”、英文 `Chapter X` 等格式；记录误匹配和无法识别的范围。
+1. 检查文件大小、编码、行尾、章节或场景标题、最小和最大章节号；用 `scripts/create_lore_manifest.py` 记录原文路径、SHA-256、大小和修改时间。
+2. 章节识别按证据逐步放宽：优先匹配明确的中文章节标题，也可识别“第 X 回”、中文数字章节、大小写不敏感的英文 `Chapter X`、序章和终章等格式；记录误匹配和无法识别的范围。题材或文本使用其他格式时，通过 `config.example.json` 自定义规则。
 3. 按章节或稳定场景边界切块。默认每块约 15-25 章，或约 1-3 万汉字；实际大小以完整上下文和模型限制为准。超长章节可以单独拆分，但不能让代理只读到半个逻辑段落。
 4. 第一块保留书名、作者、卷名和简介等元数据；最后一块保留完结标记、后记或尾声信息。
 5. 用脚本检查分块数量、编号连续性、首尾覆盖范围、分块总字节数与原文是否相符。CRLF 变成 LF 不算内容丢失，但要记录。
@@ -78,7 +80,7 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 
 ## 阶段 1：分块提取
 
-每个子代理只负责一个分块，必须完整读取该分块，写入自己的 `分块提取/chunk-NNN.md`。禁止两个代理写同一个文件。统一使用以下八类栏目，原文没有对应内容时保留标题并写“本块未发现”：
+每个子代理只负责一个分块，必须完整读取该分块，写入自己的 `分块提取/chunk-NNN.md`。禁止两个代理写同一个文件。默认使用以下八类栏目，原文没有对应内容时保留标题并写“本块未发现”；实际项目可通过配置替换或缩减分类：
 
 1. 人物/角色出现
 2. 事件/情节/任务
@@ -90,6 +92,8 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 8. 大事记/时间线
 
 每条记录必须带章节、场景或可定位的原文范围；事实和推断分开；直接引文尽量不超过 30 字，并优先用转述说明事实。无名对象可以留在大事记或事件参与者中，不必强行建立人物卡。
+
+正式卡片必须保留稳定 `实体 ID`。每条证据使用唯一 `evidence_id`，并记录 `source_file`、`source_chunk`、`source_chapter` 或其他定位、`evidence_type`、`confidence` 和 `fact_status`；缺少其中必要信息时标记待复核，不得用“根据原文”代替定位。
 
 ### 并发调度
 
@@ -254,12 +258,17 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 
 使用 `scripts/audit_lore_distill.py` 或等价脚本，检查：
 
+```powershell
+python scripts/audit_lore_distill.py "D:\小说\某书-蒸馏" --config "D:\小说\某书-蒸馏\audit-config.json" --strict
+```
+
 - 分块文本和分块提取编号是否连续，并与实际预期范围一致；
 - `合并/` 中的 merge 编号是否连续，每份是否包含八个一级栏目；
 - 每份终审输入是否覆盖当前实际存在的全部 merge 来源；
 - 时间线章节或原文时间范围是否覆盖已声明的处理范围；未知首尾不要擅自判定为错误；
-- 正式卡片目录是否有空文件、缺少实体状态或缺少来源；
-- 根索引和分类目录索引是否存在坏链；
+- 正式卡片目录是否有空文件、缺少实体状态、实体 ID、逐条证据或来源定位；
+- 根索引和分类目录索引中的所有 Markdown 链接、锚点是否存在，以及是否有卡片未被索引；
+- `manifest.json` 是否可解析，源文件可访问时 SHA-256、大小是否匹配；`PIPELINE_STATE.md` 是否保留固定状态字段；
 - 仅提及、待复核、短卡、占位字段和规范化重名数量；
 - 与修复前基线相比，新增来源是否进入最终卡片。
 
@@ -271,7 +280,7 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 
 ## 阶段 5：交付与可选格式
 
-默认交付 Markdown 资料库。确认 Markdown 卡片、索引和审计稳定后，才生成 SillyTavern World Book、Lorebook 或角色卡 JSON。JSON 条目的 `key`、`content`、`comment` 和来源应从已审计卡片生成，不要直接从半成品分块提取生成。
+默认交付 Markdown 资料库。确认 Markdown 卡片、索引和严格审计稳定后，才生成 SillyTavern World Book、Lorebook 或角色卡 JSON。JSON 条目的 `key`、`content`、`comment` 和来源应从已审计卡片生成，不要直接从半成品分块提取生成。
 
 最后更新 `PIPELINE_STATE.md`，写清当前阶段、完成产物、分块/合并数量、并发峰值、来源覆盖、备份位置和仍需人工复核的冲突。不能把“有候选记录”写成“全部完成”。
 
@@ -285,3 +294,13 @@ description: 将长篇小说或长文本蒸馏成可追溯、可检索、可继�
 - 不覆盖用户原文或未备份的正式资料库。
 - 不把候选提取结果冒充已审计定稿。
 - 本 skill 不负责作者思想、方法论或人物角色扮演；那属于其他 skill。
+
+## 参考文件
+
+- [`references/card-schemas.md`](references/card-schemas.md)：卡片与中间文件字段规范
+- [`references/config-schema.md`](references/config-schema.md)：自定义分类、字段、章节规则和输出路径
+- [`references/pipeline-state-schema.md`](references/pipeline-state-schema.md)：`PIPELINE_STATE.md` 固定字段
+- [`references/repair-checklist.md`](references/repair-checklist.md)：修复、覆盖率和交付检查清单
+- [`references/test-prompts.md`](references/test-prompts.md)：触发和修复分支测试提示
+- [`scripts/audit_lore_distill.py`](scripts/audit_lore_distill.py)：最终审计脚本
+- [`scripts/create_lore_manifest.py`](scripts/create_lore_manifest.py)：生成原始文件 manifest
