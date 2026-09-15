@@ -75,6 +75,8 @@
 <书名>-蒸馏/
 ├── 00-总览.md
 ├── PIPELINE_STATE.md
+├── manifest.json
+├── audit-config.json       # 可选：自定义分类、字段和章节规则
 ├── 角色索引.md
 ├── 事件索引.md
 ├── 地点索引.md
@@ -124,6 +126,7 @@ references/card-schemas.md
 references/repair-checklist.md
 references/test-prompts.md
 scripts/audit_lore_distill.py
+scripts/create_lore_manifest.py
 ```
 
 ## 触发方式
@@ -185,8 +188,10 @@ scripts/audit_lore_distill.py
 - 合并文件编号是否连续，每份是否包含八个一级栏目；
 - 每份终审输入是否包含合并目录中的全部实际来源；
 - 已声明的章节或时间范围是否覆盖源文首尾；
-- 卡片是否为空、缺少实体状态或缺少来源；
-- 根索引和目录内索引是否存在坏链；
+- 卡片是否为空、缺少实体状态、实体 ID、逐条证据或来源定位；
+- 根索引和目录内索引中的所有 Markdown 链接、锚点是否存在，以及是否有卡片未被索引；
+- `manifest.json` 是否完整，源文件可访问时 SHA-256 和大小是否匹配；
+- `PIPELINE_STATE.md` 是否包含固定状态字段；
 - 仅提及、待复核、短卡、占位字段和规范化重名数量；
 - 与修复前基线的数量差异。
 
@@ -196,19 +201,30 @@ scripts/audit_lore_distill.py
 python scripts/audit_lore_distill.py "D:\小说\某书-蒸馏"
 ```
 
+交付前使用严格模式；发现缺口时命令返回状态码 `1`，输出目录不存在返回 `2`：
+
+```powershell
+python scripts/audit_lore_distill.py "D:\小说\某书-蒸馏" --strict
+```
+
 如果已知分块和章节范围，可以显式提供预期值：
 
 ```bash
 python scripts/audit_lore_distill.py \
   "D:\小说\某书-蒸馏" \
-  --expected-chunks 81 \
-  --first-chapter 1 \
-  --last-chapter 1200 \
+  --config "D:\小说\某书-蒸馏\audit-config.json" \
   --baseline "D:\小说\某书-蒸馏\修复\repair-baseline.json" \
-  --report "D:\小说\某书-蒸馏\修复\audit-report.json"
+  --report "D:\小说\某书-蒸馏\修复\audit-report.json" \
+  --strict
 ```
 
-`--expected-chunks`、`--first-chapter` 和 `--last-chapter` 都是可选的，不提供时不会假设某本书的固定规模。脚本会在 `修复/audit-report.json` 写入机器可读报告；它不会修改卡片和原文。
+`--expected-chunks`、`--first-chapter` 和 `--last-chapter` 都是可选的，不提供时不会假设某本书的固定规模；也可以在配置文件中设置。章节规则、分类、字段、合并栏目数和输出路径见 [`config.example.json`](config.example.json) 与 [`references/config-schema.md`](references/config-schema.md)。脚本会在 `修复/audit-report.json` 写入机器可读报告；它不会修改卡片和原文。
+
+处理原文的第一步可生成 manifest：
+
+```powershell
+python scripts/create_lore_manifest.py "D:\小说\某部长篇.txt" "D:\小说\某书-蒸馏"
+```
 
 ## 安全与边界
 
@@ -225,9 +241,12 @@ python scripts/audit_lore_distill.py \
 
 - [`SKILL.md`](SKILL.md)：完整执行流程和工具行为规范
 - [`references/card-schemas.md`](references/card-schemas.md)：卡片与中间文件字段规范
+- [`references/config-schema.md`](references/config-schema.md)：自定义分类、字段、章节规则和输出路径
+- [`references/pipeline-state-schema.md`](references/pipeline-state-schema.md)：`PIPELINE_STATE.md` 固定字段
 - [`references/repair-checklist.md`](references/repair-checklist.md)：修复、覆盖率和交付检查清单
 - [`references/test-prompts.md`](references/test-prompts.md)：触发和修复分支测试提示
 - [`scripts/audit_lore_distill.py`](scripts/audit_lore_distill.py)：最终审计脚本
+- [`scripts/create_lore_manifest.py`](scripts/create_lore_manifest.py)：生成原始文件 manifest
 
 ## 许可证
 
